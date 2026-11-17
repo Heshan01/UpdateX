@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 namespace UpdatePilot.Agent;
@@ -24,17 +25,23 @@ internal static class WinGetStructuredCatalog
         if (File.Exists(script)) return script;
         try
         {
-            string tempScript = Path.Combine(Path.GetTempPath(), "UpdateX", "ReadWinGet.ps1");
-            if (File.Exists(tempScript)) return tempScript;
-            Directory.CreateDirectory(Path.GetDirectoryName(tempScript)!);
-            using var stream = typeof(WinGetStructuredCatalog).Assembly.GetManifestResourceStream("UpdatePilot.Agent.ReadWinGet.ps1")
-                ?? typeof(WinGetStructuredCatalog).Assembly.GetManifestResourceStream("UpdateX.Agent.ReadWinGet.ps1");
-            if (stream is not null)
+            string tempDir = Path.Combine(Path.GetTempPath(), "UpdateX");
+            Directory.CreateDirectory(tempDir);
+            string tempScript = Path.Combine(tempDir, "ReadWinGet.ps1");
+            var assembly = Assembly.GetExecutingAssembly();
+            string? resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("ReadWinGet.ps1", StringComparison.OrdinalIgnoreCase));
+            if (resourceName is not null)
             {
-                using var file = File.Create(tempScript);
-                stream.CopyTo(file);
-                return tempScript;
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream is not null)
+                {
+                    using var file = new FileStream(tempScript, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                    stream.CopyTo(file);
+                    return tempScript;
+                }
             }
+            if (File.Exists(tempScript)) return tempScript;
         }
         catch { }
         return script;
@@ -57,7 +64,7 @@ internal static class WinGetStructuredCatalog
                 RedirectStandardOutput = true, RedirectStandardError = true,
                 StandardOutputEncoding = System.Text.Encoding.UTF8,
             };
-            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-File", script, "-ModulePath", module })
+            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-ModulePath", module })
                 process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return new(false, [], "WINGET_CLIENT_START_FAILED");
             Task<string> output = process.StandardOutput.ReadToEndAsync(token);
@@ -88,17 +95,29 @@ internal static class WinGetStructuredCatalog
     private static string? FindModule()
     {
         string? configured = Environment.GetEnvironmentVariable("UPDATEPILOT_WINGET_MODULE");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return configured;
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return Path.GetFullPath(configured);
         for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
         {
             foreach (string relative in new[] {
                 Path.Combine("modules", "Microsoft.WinGet.Client", "1.29.380", "Microsoft.WinGet.Client.psd1"),
                 Path.Combine(".local", "modules", "Microsoft.WinGet.Client", "1.29.380", "Microsoft.WinGet.Client.psd1"),
+                Path.Combine("resources", "services", "agent", "modules", "Microsoft.WinGet.Client", "1.29.380", "Microsoft.WinGet.Client.psd1"),
             })
             {
                 string path = Path.Combine(directory.FullName, relative);
-                if (File.Exists(path)) return path;
+                if (File.Exists(path)) return Path.GetFullPath(path);
             }
+        }
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string[] candidates = [
+            Path.Combine(localAppData, "Programs", "@updatepilotdesktop-shell", "UpdateX", "resources", "services", "agent", "modules", "Microsoft.WinGet.Client", "1.29.380", "Microsoft.WinGet.Client.psd1"),
+            Path.Combine(localAppData, "Microsoft", "WinGet", "Modules", "Microsoft.WinGet.Client", "Microsoft.WinGet.Client.psd1"),
+            Path.Combine(Path.GetTempPath(), "UpdateX", "modules", "Microsoft.WinGet.Client", "1.29.380", "Microsoft.WinGet.Client.psd1"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsPowerShell", "Modules", "Microsoft.WinGet.Client", "Microsoft.WinGet.Client.psd1"),
+        ];
+        foreach (string candidate in candidates)
+        {
+            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
         }
         return null;
     }

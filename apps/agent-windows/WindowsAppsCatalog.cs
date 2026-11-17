@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 namespace UpdatePilot.Agent;
@@ -14,17 +15,23 @@ internal static class WindowsAppsCatalog
         if (File.Exists(script)) return script;
         try
         {
-            string tempScript = Path.Combine(Path.GetTempPath(), "UpdateX", "ReadWindowsApps.ps1");
-            if (File.Exists(tempScript)) return tempScript;
-            Directory.CreateDirectory(Path.GetDirectoryName(tempScript)!);
-            using var stream = typeof(WindowsAppsCatalog).Assembly.GetManifestResourceStream("UpdatePilot.Agent.ReadWindowsApps.ps1")
-                ?? typeof(WindowsAppsCatalog).Assembly.GetManifestResourceStream("UpdateX.Agent.ReadWindowsApps.ps1");
-            if (stream is not null)
+            string tempDir = Path.Combine(Path.GetTempPath(), "UpdateX");
+            Directory.CreateDirectory(tempDir);
+            string tempScript = Path.Combine(tempDir, "ReadWindowsApps.ps1");
+            var assembly = Assembly.GetExecutingAssembly();
+            string? resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("ReadWindowsApps.ps1", StringComparison.OrdinalIgnoreCase));
+            if (resourceName is not null)
             {
-                using var file = File.Create(tempScript);
-                stream.CopyTo(file);
-                return tempScript;
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream is not null)
+                {
+                    using var file = new FileStream(tempScript, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                    stream.CopyTo(file);
+                    return tempScript;
+                }
             }
+            if (File.Exists(tempScript)) return tempScript;
         }
         catch { }
         return script;
@@ -46,7 +53,7 @@ internal static class WindowsAppsCatalog
             process.StartInfo = new ProcessStartInfo { FileName = powershell, UseShellExecute = false,
                 CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
                 StandardOutputEncoding = System.Text.Encoding.UTF8 };
-            foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-File", script })
+            foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script })
                 process.StartInfo.ArgumentList.Add(arg);
             if (!process.Start())
             {

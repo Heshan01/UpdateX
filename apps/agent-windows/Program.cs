@@ -59,112 +59,141 @@ try
 
     bool rotatingKey = args.Contains("--rotate-key", StringComparer.Ordinal) ||
         args.Contains("--recover-key", StringComparer.Ordinal);
-    using var identity = rotatingKey ? AgentIdentity.OpenPending() : AgentIdentity.Open();
-    using var api = new AgentClient(identity);
-    if (identity.DeviceId is null)
+
+    if (args.Contains("--reset", StringComparer.OrdinalIgnoreCase) ||
+        args.Contains("--re-pair", StringComparer.OrdinalIgnoreCase))
     {
-        if (identity.PairingId is not null)
-        {
-            try
-            {
-                PairingStatusResponse prior = await api.PollPairingAsync(identity.PairingId, shutdown.Token);
-                if (prior.Paired && prior.DeviceId is not null) identity.SaveDevice(prior.DeviceId);
-            }
-            catch (AgentApiException error) when (error.Code == "PAIRING_EXPIRED") { }
-        }
-    }
-    if (identity.DeviceId is null)
-    {
-        PairingStartResponse pairing = await api.StartPairingAsync(shutdown.Token);
-        identity.SavePairingId(pairing.PairingId);
-        Console.WriteLine(rotatingKey
-            ? "Stop the previous agent, then approve this new key for the existing offline device in UpdateX Settings:"
-            : "Pair this Windows agent in UpdateX Settings:");
-        Console.WriteLine($"Code: {pairing.Code}");
-        Console.WriteLine($"Key fingerprint: {pairing.Fingerprint}");
-        Console.WriteLine("The code expires in ten minutes. Keep this window open while approving it.");
-        while (!shutdown.IsCancellationRequested && DateTimeOffset.UtcNow < pairing.ExpiresAt)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(3), shutdown.Token);
-            PairingStatusResponse status = await api.PollPairingAsync(pairing.PairingId, shutdown.Token);
-            if (status.Paired && status.DeviceId is not null)
-            {
-                identity.SaveDevice(status.DeviceId);
-                Console.WriteLine("Agent paired. The first scan is queued.");
-                break;
-            }
-        }
-        if (identity.DeviceId is null) throw new InvalidOperationException("Pairing expired without owner approval.");
+        ResetLocalIdentity();
+        Console.WriteLine("Previous agent identity backed up. Starting fresh pairing...");
     }
 
-    bool once = args.Contains("--once", StringComparer.Ordinal);
-    // A normal licensed, paired agent is ready to run only jobs that the local
-    // user explicitly previewed and confirmed. Key recovery cannot run jobs.
-    bool allowUpdates = !rotatingKey;
-    Console.WriteLine(allowUpdates
-        ? "Agent connected. Confirmed update jobs may execute under this Windows user."
-        : "Agent key recovery session. Update jobs are unavailable until recovery is approved.");
-    bool updateNoticeShown = false;
-    int connectionFailures = 0;
     while (!shutdown.IsCancellationRequested)
     {
-      try
-      {
-        await api.HeartbeatAsync(allowUpdates, shutdown.Token);
-        NextJobResponse job = await api.NextJobAsync(shutdown.Token);
-        connectionFailures = 0;
-        if (job.Kind == "scan" && job.JobId is not null)
+        using var identity = rotatingKey ? AgentIdentity.OpenPending() : AgentIdentity.Open();
+        using var api = new AgentClient(identity);
+        if (identity.DeviceId is null)
         {
-            await api.ClaimScanAsync(job.JobId, shutdown.Token);
-            await using var lease = new LeaseKeeper(TimeSpan.FromMinutes(1), renewToken => api.RenewScanAsync(job.JobId, renewToken));
+            if (identity.PairingId is not null)
+            {
+                try
+                {
+                    PairingStatusResponse prior = await api.PollPairingAsync(identity.PairingId, shutdown.Token);
+                    if (prior.Paired && prior.DeviceId is not null) identity.SaveDevice(prior.DeviceId);
+                }
+                catch (AgentApiException error) when (error.Code is "PAIRING_EXPIRED" or "AGENT_REVOKED") { }
+            }
+        }
+        if (identity.DeviceId is null)
+        {
+            PairingStartResponse pairing = await api.StartPairingAsync(shutdown.Token);
+            identity.SavePairingId(pairing.PairingId);
+            Console.WriteLine(rotatingKey
+                ? "Stop the previous agent, then approve this new key for the existing offline device in UpdateX Settings:"
+                : "Pair this Windows agent in UpdateX Settings:");
+            Console.WriteLine($"Code: {pairing.Code}");
+            Console.WriteLine($"Key fingerprint: {pairing.Fingerprint}");
+            Console.WriteLine("The code expires in ten minutes. Keep this window open while approving it.");
+            while (!shutdown.IsCancellationRequested && DateTimeOffset.UtcNow < pairing.ExpiresAt)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), shutdown.Token);
+                PairingStatusResponse status = await api.PollPairingAsync(pairing.PairingId, shutdown.Token);
+                if (status.Paired && status.DeviceId is not null)
+                {
+                    identity.SaveDevice(status.DeviceId);
+                    Console.WriteLine("Agent paired. The first scan is queued.");
+                    break;
+                }
+            }
+            if (identity.DeviceId is null) throw new InvalidOperationException("Pairing expired without owner approval.");
+        }
+
+        bool once = args.Contains("--once", StringComparer.Ordinal);
+        // A normal licensed, paired agent is ready to run only jobs that the local
+        // user explicitly previewed and confirmed. Key recovery cannot run jobs.
+        bool allowUpdates = !rotatingKey;
+        Console.WriteLine(allowUpdates
+            ? "Agent connected. Confirmed update jobs may execute under this Windows user."
+            : "Agent key recovery session. Update jobs are unavailable until recovery is approved.");
+        bool updateNoticeShown = false;
+        int connectionFailures = 0;
+        bool shouldRePair = false;
+
+        while (!shutdown.IsCancellationRequested)
+        {
             try
             {
-                var (applications, catalogError, rawCount) = await InventoryScanner.ScanAsync(shutdown.Token);
-                await api.SubmitScanAsync(job.JobId, new ScanResult("succeeded", applications, rawCount, null), shutdown.Token);
-                Console.WriteLine($"Scan saved: {rawCount} raw observations → {applications.Count} logical applications; " +
-                    $"{applications.Count(item => item.PackageId is not null)} WinGet identities.");
-                if (catalogError is not null) Console.WriteLine($"WinGet catalog: {catalogError}.");
+                await api.HeartbeatAsync(allowUpdates, shutdown.Token);
+                NextJobResponse job = await api.NextJobAsync(shutdown.Token);
+                connectionFailures = 0;
+                if (job.Kind == "scan" && job.JobId is not null)
+                {
+                    await api.ClaimScanAsync(job.JobId, shutdown.Token);
+                    await using var lease = new LeaseKeeper(TimeSpan.FromMinutes(1), renewToken => api.RenewScanAsync(job.JobId, renewToken));
+                    try
+                    {
+                        var (applications, catalogError, rawCount) = await InventoryScanner.ScanAsync(shutdown.Token);
+                        await api.SubmitScanAsync(job.JobId, new ScanResult("succeeded", applications, rawCount, null), shutdown.Token);
+                        Console.WriteLine($"Scan saved: {rawCount} raw observations → {applications.Count} logical applications; " +
+                            $"{applications.Count(item => item.PackageId is not null)} WinGet identities.");
+                        if (catalogError is not null) Console.WriteLine($"WinGet catalog: {catalogError}.");
+                    }
+                    catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { throw; }
+                    catch (Exception error)
+                    {
+                        try { await api.SubmitScanAsync(job.JobId, new ScanResult("failed", [], 0, "SCAN_FAILED"), shutdown.Token); }
+                        catch { /* The server lease will eventually classify an unreported scan. */ }
+                        AgentLog.Write("scan_failed", AgentLog.Classify(error));
+                    }
+                    if (once) break;
+                }
+                else if (job.Kind == "update")
+                {
+                    if (allowUpdates && job.JobId is not null)
+                    {
+                        await UpdateRunner.RunAsync(api, job.JobId, shutdown.Token);
+                        updateNoticeShown = false;
+                    }
+                    else if (!updateNoticeShown)
+                    {
+                        Console.WriteLine("An update is queued, but this agent run cannot execute software changes.");
+                        updateNoticeShown = true;
+                    }
+                    if (once) break;
+                }
+                else if (once) break;
+                await Task.Delay(TimeSpan.FromSeconds(5), shutdown.Token);
             }
-            catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
+            catch (AgentApiException error) when (error.Code == "AGENT_REVOKED")
+            {
+                AgentLog.Write("identity_rejected", error.Code);
+                Console.WriteLine("Previous agent identity was revoked. Backing up old credentials and requesting a new pairing code...");
+                ResetLocalIdentity();
+                shouldRePair = true;
+                break;
+            }
+            catch (AgentApiException error) when (error.Code == "AGENT_ID_INVALID")
+            {
+                AgentLog.Write("identity_rejected", error.Code);
+                return 1;
+            }
             catch (Exception error)
             {
-                try { await api.SubmitScanAsync(job.JobId, new ScanResult("failed", [], 0, "SCAN_FAILED"), shutdown.Token); }
-                catch { /* The server lease will eventually classify an unreported scan. */ }
-                AgentLog.Write("scan_failed", AgentLog.Classify(error));
+                connectionFailures = Math.Min(connectionFailures + 1, 6);
+                var delay = TimeSpan.FromSeconds(Math.Min(30, 1 << (connectionFailures - 1)));
+                AgentLog.Write("connection_retry", AgentLog.Classify(error));
+                if (once) return 1;
+                await Task.Delay(delay, shutdown.Token);
             }
-            if (once) break;
         }
-        else if (job.Kind == "update")
+
+        if (shouldRePair && !shutdown.IsCancellationRequested)
         {
-            if (allowUpdates && job.JobId is not null)
-            {
-                await UpdateRunner.RunAsync(api, job.JobId, shutdown.Token);
-                updateNoticeShown = false;
-            }
-            else if (!updateNoticeShown)
-            {
-                Console.WriteLine("An update is queued, but this agent run cannot execute software changes.");
-                updateNoticeShown = true;
-            }
-            if (once) break;
+            rotatingKey = false;
+            continue;
         }
-        else if (once) break;
-        await Task.Delay(TimeSpan.FromSeconds(5), shutdown.Token);
-      }
-      catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }
-      catch (AgentApiException error) when (error.Code is "AGENT_REVOKED" or "AGENT_ID_INVALID")
-      {
-          AgentLog.Write("identity_rejected", error.Code);
-          return 1;
-      }
-      catch (Exception error)
-      {
-          connectionFailures = Math.Min(connectionFailures + 1, 6);
-          var delay = TimeSpan.FromSeconds(Math.Min(30, 1 << (connectionFailures - 1)));
-          AgentLog.Write("connection_retry", AgentLog.Classify(error));
-          if (once) return 1;
-          await Task.Delay(delay, shutdown.Token);
-      }
+
+        break;
     }
     return 0;
 }
@@ -173,4 +202,28 @@ catch (Exception error)
 {
     AgentLog.Write("agent_stopped", AgentLog.Classify(error));
     return 1;
+}
+
+static void ResetLocalIdentity()
+{
+    string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    string[] folders = [Path.Combine(local, "UpdateX"), Path.Combine(local, "UpdatePilot")];
+    string timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
+    foreach (string folder in folders)
+    {
+        if (!Directory.Exists(folder)) continue;
+        foreach (string filename in new[] { "agent.json", "agent.pending.json" })
+        {
+            string filePath = Path.Combine(folder, filename);
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    string backupPath = Path.Combine(folder, $"{filename}.revoked.{timestamp}");
+                    File.Move(filePath, backupPath, overwrite: true);
+                }
+                catch { }
+            }
+        }
+    }
 }

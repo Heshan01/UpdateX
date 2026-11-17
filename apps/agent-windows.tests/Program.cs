@@ -254,6 +254,37 @@ var tests = new (string Name, Action Test)[]
             item.DownloadedBytes == 512L * 1024 && item.TotalBytes == 2L * 1024 * 1024),
             "real terminal metrics are parsed without inventing progress");
     }),
+    ("dynamic embedded script extraction extracts to temp directory", () =>
+    {
+        var asm = typeof(InventoryResolver).Assembly;
+        var names = asm.GetManifestResourceNames();
+        var wingetName = names.FirstOrDefault(n => n.EndsWith("ReadWinGet.ps1", StringComparison.OrdinalIgnoreCase));
+        var appxName = names.FirstOrDefault(n => n.EndsWith("ReadWindowsApps.ps1", StringComparison.OrdinalIgnoreCase));
+        Check(wingetName is not null, "ReadWinGet.ps1 embedded resource found");
+        Check(appxName is not null, "ReadWindowsApps.ps1 embedded resource found");
+
+        string tempDir = Path.Combine(Path.GetTempPath(), "UpdateX");
+        Directory.CreateDirectory(tempDir);
+        string wingetDest = Path.Combine(tempDir, "ReadWinGet.ps1");
+        string appxDest = Path.Combine(tempDir, "ReadWindowsApps.ps1");
+
+        using (var stream = asm.GetManifestResourceStream(wingetName!))
+        {
+            Check(stream is not null && stream.Length > 0, "ReadWinGet.ps1 stream readable");
+            using var file = new FileStream(wingetDest, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+            stream!.CopyTo(file);
+        }
+
+        using (var stream = asm.GetManifestResourceStream(appxName!))
+        {
+            Check(stream is not null && stream.Length > 0, "ReadWindowsApps.ps1 stream readable");
+            using var file = new FileStream(appxDest, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+            stream!.CopyTo(file);
+        }
+
+        Check(File.Exists(wingetDest) && new FileInfo(wingetDest).Length > 0, "ReadWinGet.ps1 extracted cleanly");
+        Check(File.Exists(appxDest) && new FileInfo(appxDest).Length > 0, "ReadWindowsApps.ps1 extracted cleanly");
+    }),
 };
 
 int passed = 0;
