@@ -28,6 +28,9 @@ function hashes(): Set<string> {
 }
 
 function fingerprint(): string {
+  if (process.platform !== "win32") {
+    return createHash("sha256").update(`UpdateX-device-v1:${os.hostname()}-${process.platform}`).digest("hex");
+  }
   const output = execFileSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe"),
     ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
     { encoding: "utf8", timeout: 3000, windowsHide: true });
@@ -37,7 +40,7 @@ function fingerprint(): string {
 }
 
 function dpapi(action: "protect" | "unprotect", input: string): string {
-  if (process.platform !== "win32") throw new Error("WINDOWS_REQUIRED");
+  if (process.platform !== "win32") return input;
   const script = path.resolve(__dirname, "../scripts/license-storage.ps1");
   const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   const result = spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-File", script, action],

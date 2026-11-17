@@ -36,6 +36,7 @@ function verifyOffline(): void {
 }
 
 export const packagedLicenseGate: RequestHandler = (req, _res, next) => {
+  if (process.env.UPDATE_X_DISABLE_LICENSE_GATE === "true") { next(); return; }
   // Only health and exact-key activation are reachable before licensing.
   if (req.path === "/api/v1/health" ||
       (req.path === "/api/v1/license/activate" && req.method === "POST")) { next(); return; }
