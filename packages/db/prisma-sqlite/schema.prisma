@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  username     String       @unique
+  passwordHash String
+  accountEnabled Boolean @default(true)
+  createdAt    DateTime     @default(now())
+  sessions     Session[]
+  settings     Settings?
+  devices      Device[]
+  scanJobs     ScanJob[]
+  updateJobs   UpdateJob[]
+  auditEvents  AuditEvent[]
+  pairingRequests PairingRequest[]
+  updatePreviews UpdatePreview[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  csrfToken String
+  mode      String   @default("account")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Settings {
+  userId        String   @id
+  theme         String   @default("system")
+  retentionDays Int      @default(365)
+  scanReminderDays Int   @default(7)
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Device {
+  id           String         @id @default(cuid())
+  ownerId      String
+  name         String
+  agentVersion String?
+  osVersion    String?
+  lastSeenAt   DateTime?
+  lastHeartbeatAt DateTime?
+  executionMode String        @default("read_only")
+  revokedAt    DateTime?
+  publicKeyPem String?
+  keyFingerprint String?       @unique
+  createdAt    DateTime       @default(now())
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  scanJobs     ScanJob[]
+  snapshots    ScanSnapshot[]
+  updateJobs   UpdateJob[]
+  auditEvents  AuditEvent[]
+  pairingRequests PairingRequest[]
+  nonces       AgentNonce[]
+  updatePreviews UpdatePreview[]
+
+  @@index([ownerId, createdAt])
+}
+
+model ScanJob {
+  id          String        @id @default(cuid())
+  deviceId    String
+  requestedBy String
+  status      String        @default("queued")
+  errorCode   String?
+  createdAt   DateTime      @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  leaseUntil  DateTime?
+  device      Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  snapshot    ScanSnapshot?
+
+  @@index([deviceId, createdAt])
+}
+
+model ScanSnapshot {
+  id           String        @id @default(cuid())
+  deviceId     String
+  scanJobId    String        @unique
+  takenAt      DateTime      @default(now())
+  rawObservationCount Int    @default(0)
+  device       Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  scanJob      ScanJob       @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([deviceId, takenAt])
+}
+
+model Application {
+  id                String        @id @default(cuid())
+  snapshotId        String
+  stableKey         String
+  displayName       String
+  publisher         String?
+  installedVersion  String?
+  packageId         String?
+  source            String?
+  availableVersion  String?
+  matchStatus       String        @default("unmatched")
+  updateStatus      String        @default("unsupported")
+  matchReason       String?
+  evidenceType      String        @default("registry")
+  installScope      String?
+  architecture      String?
+  installLocation   String?
+  installationType  String        @default("unknown")
+  observedAt        DateTime      @default(now())
+  snapshot          ScanSnapshot  @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  updateJobs        UpdateJob[]
+  updatePreviews    UpdatePreview[]
+  observations      ApplicationObservation[]
+
+  @@unique([snapshotId, stableKey])
+  @@index([snapshotId, displayName, id])
+  @@index([snapshotId, updateStatus])
+}
+
+model ApplicationObservation {
+  id               String      @id @default(cuid())
+  applicationId    String
+  sourceKey        String
+  evidenceType     String
+  displayName      String
+  publisher        String?
+  installedVersion String?
+  packageId        String?
+  registryHive     String?
+  registryView     String?
+  registryKey      String?
+  packageFamilyName String?
+  installLocation  String?
+  displayIcon      String?
+  architecture     String?
+  installScope     String?
+  windowsInstaller Boolean?
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, sourceKey])
+  @@index([applicationId, evidenceType])
+}
+
+model UpdateJob {
+  id                String       @id @default(cuid())
+  deviceId          String
+  applicationId     String
+  requestedBy       String
+  status            String       @default("queued")
+  packageId         String
+  source            String
+  installedVersion  String?
+  targetVersion     String
+  observedVersion   String?
+  exitCode          Int?
+  diagnosticCode    String?
+  progressStage     String?
+  downloadPercent   Int?
+  downloadedBytes   BigInt?
+  totalBytes        BigInt?
+  progressAt        DateTime?
+  idempotencyKey    String
+  createdAt         DateTime     @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  leaseUntil        DateTime?
+  executionStartedAt DateTime?
+  previewId         String?       @unique
+  publisher         String?
+  evidenceHash      String?
+  device            Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  application       Application  @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  user              User         @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  preview           UpdatePreview? @relation(fields: [previewId], references: [id], onDelete: SetNull)
+  events            UpdateEvent[]
+
+  @@unique([requestedBy, idempotencyKey])
+  @@index([deviceId, createdAt])
+}
+
+model PairingRequest {
+  id             String   @id @default(cuid())
+  codeHash       String   @unique
+  publicKeyPem   String
+  keyFingerprint String
+  deviceName     String
+  agentVersion   String
+  osVersion      String
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  approvedAt     DateTime?
+  ownerId        String?
+  deviceId       String?
+  owner          User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  device         Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  nonces         PairingNonce[]
+
+  @@index([expiresAt])
+}
+
+model PairingNonce {
+  pairingId String
+  nonce     String
+  createdAt DateTime @default(now())
+  pairing   PairingRequest @relation(fields: [pairingId], references: [id], onDelete: Cascade)
+
+  @@id([pairingId, nonce])
+}
+
+model AgentNonce {
+  deviceId  String
+  nonce     String
+  createdAt DateTime @default(now())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, nonce])
+  @@index([createdAt])
+}
+
+model UpdatePreview {
+  id               String   @id @default(cuid())
+  ownerId          String
+  deviceId         String
+  applicationId    String
+  packageId        String
+  source           String
+  publisher        String?
+  installedVersion String
+  targetVersion    String
+  evidenceHash     String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime @default(now())
+  owner            User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  device           Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  job              UpdateJob?
+
+  @@index([ownerId, expiresAt])
+}
+
+model UpdateEvent {
+  id        String   @id @default(cuid())
+  jobId     String
+  status    String
+  detail    String?
+  downloadPercent Int?
+  downloadedBytes BigInt?
+  totalBytes BigInt?
+  createdAt DateTime @default(now())
+  job       UpdateJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  deviceId   String?
+  kind       String   @default("audit")
+  action     String
+  target     String?
+  detail     String?
+  status     String   @default("info")
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device     Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}

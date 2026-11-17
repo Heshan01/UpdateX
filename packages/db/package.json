@@ -1,0 +1,24 @@
+{
+  "name": "@updatepilot/db",
+  "version": "0.1.0",
+  "private": true,
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate --schema prisma/schema.prisma",
+    "generate:postgres": "prisma generate --schema prisma/schema.prisma",
+    "generate:sqlite": "prisma generate --schema prisma-sqlite/schema.prisma",
+    "migrate:sqlite": "prisma migrate deploy --schema prisma-sqlite/schema.prisma",
+    "migrate": "prisma migrate dev",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.0",
+    "typescript": "^5.8.3"
+  }
+}

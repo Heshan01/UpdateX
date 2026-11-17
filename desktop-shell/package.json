@@ -1,0 +1,20 @@
+{
+  "name": "@updatepilot/desktop-shell",
+  "productName": "UpdateX",
+  "description": "UpdateX Windows software update intelligence desktop shell",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check startup-policy.cjs",
+    "test:startup": "node --test test/startup.test.cjs test/prisma-stage.test.mjs",
+    "stage": "node stage.mjs",
+    "package": "pnpm run package:win",
+    "package:win": "node stage.mjs && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "^26.18.0"
+  }
+}

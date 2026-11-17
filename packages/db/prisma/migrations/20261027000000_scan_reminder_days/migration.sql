@@ -1,0 +1,1 @@
+ALTER TABLE "Settings" ADD COLUMN "scanReminderDays" INTEGER NOT NULL DEFAULT 7;

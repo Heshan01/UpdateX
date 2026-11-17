@@ -1,0 +1,33 @@
+{
+  "appId": "com.updatex.desktop",
+  "productName": "UpdateX",
+  "compression": "store",
+  "files": ["main.cjs", "preload.cjs", "license-format.cjs", "startup-policy.cjs", "package.json"],
+  "extraResources": [
+    { "from": "splash.html", "to": "splash.html" },
+    { "from": "activation.html", "to": "activation.html" },
+    { "from": "activation.js", "to": "activation.js" },
+    { "from": "license-verifier.json", "to": "license-verifier.json" },
+    { "from": "../branding/UpdateX_Logo.png", "to": "UpdateX_Logo.png" },
+    { "from": "../branding/UpdateX_App_Icon.ico", "to": "branding/UpdateX_App_Icon.ico" },
+    { "from": "../branding/UpdateX_Logo.png", "to": "branding/UpdateX_Logo.png" },
+    { "from": "../.local/desktop-stage", "to": "services" }
+  ],
+  "directories": { "output": "../.local/desktop-dist" },
+  "win": {
+    "icon": "../branding/UpdateX_App_Icon.ico",
+    "target": "nsis"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false,
+    "include": "installer.nsh",
+    "differentialPackage": false,
+    "shortcutName": "UpdateX",
+    "createDesktopShortcut": false,
+    "createStartMenuShortcut": true,
+    "installerIcon": "../branding/UpdateX_App_Icon.ico",
+    "uninstallerIcon": "../branding/UpdateX_App_Icon.ico"
+  }
+}

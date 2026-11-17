@@ -1,0 +1,21 @@
+{
+  "name": "updatepilot",
+  "private": true,
+  "packageManager": "pnpm@11.28.6",
+  "scripts": {
+    "check:deps": "pnpm --filter @updatepilot/contracts build && pnpm --filter @updatepilot/db build",
+    "dev": "pnpm db:generate && pnpm check:deps && pnpm --parallel --filter @updatepilot/api --filter @updatepilot/web dev",
+    "build": "pnpm db:generate && pnpm check:deps && pnpm --filter @updatepilot/api build && pnpm --filter @updatepilot/web build",
+    "typecheck": "pnpm check:deps && pnpm --filter @updatepilot/contracts typecheck && pnpm --filter @updatepilot/db typecheck && pnpm --filter @updatepilot/api typecheck && pnpm --filter @updatepilot/web typecheck",
+    "lint": "pnpm --filter @updatepilot/api lint && pnpm --filter @updatepilot/web lint",
+    "test": "pnpm check:deps && pnpm --filter @updatepilot/api test && pnpm test:agent",
+    "test:agent": "powershell -NoProfile -File ./scripts/run-agent-tests.ps1",
+    "test:e2e": "pnpm --filter @updatepilot/web test:e2e",
+    "db:generate": "pnpm --filter @updatepilot/db generate",
+    "db:migrate": "node scripts/run-prisma.mjs migrate deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

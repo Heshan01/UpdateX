@@ -1,0 +1,2 @@
+ALTER TABLE "User" ADD COLUMN "accountEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Session" ADD COLUMN "mode" TEXT NOT NULL DEFAULT 'account';
