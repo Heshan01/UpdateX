@@ -6,7 +6,7 @@ if (!OperatingSystem.IsWindows())
     return 2;
 }
 
-string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "http://127.0.0.1:4000").TrimEnd('/');
+string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "https://updatepilotapi-production.up.railway.app").TrimEnd('/');
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; shutdown.Cancel(); };
@@ -14,18 +14,18 @@ Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; shutdown.
 try
 {
     // Check before opening an agent identity, pairing, scanning or polling jobs.
-    using var readiness = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    using var readiness = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
     try
     {
         using var response = await readiness.GetAsync($"{apiBase}/api/v1/ready", shutdown.Token);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Offline license is not active.");
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Cloud API responded with status code {response.StatusCode}.");
         using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStreamAsync(shutdown.Token));
-        if (!document.RootElement.TryGetProperty("license", out var value) || value.GetString() != "offline_key_verified_v1")
-            throw new InvalidOperationException("The local API does not enforce offline licensing.");
+        if (!document.RootElement.TryGetProperty("status", out var statusProp) || statusProp.GetString() != "ready")
+            throw new InvalidOperationException("UpdateX Cloud API is not ready.");
     }
     catch (Exception error) when (error is not OperationCanceledException)
     {
-        Console.Error.WriteLine($"Agent unavailable until UpdateX is licensed and its local API is running: {error.Message}");
+        Console.Error.WriteLine($"Agent unavailable until UpdateX API is reachable: {error.Message}");
         return 4;
     }
 

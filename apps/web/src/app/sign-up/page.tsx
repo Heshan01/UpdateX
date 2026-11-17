@@ -36,11 +36,11 @@ export default function SignUpPage() {
       accept(next);
       router.replace("/overview");
     } catch (cause) {
-      setFormError(cause instanceof Error ? cause.message : "Could not create the local account.");
+      setFormError(cause instanceof Error ? cause.message : "Could not create account.");
     } finally { setSubmitting(false); }
   }
 
-  return <AccessLayout eyebrow="Optional local account" title="Sign Up" description="Create a username and password for this licensed computer. Your existing Guest inventory and history stay in place.">
+  return <AccessLayout eyebrow="Cloud account" title="Sign Up" description="Create your UpdateX account to manage, scan, and update your Windows devices. Your data is strictly private and isolated to your account.">
     {loading ? <p className="mt-8 text-sm text-[#b7b7b7]" role="status">Checking your local session…</p> : connectionError ? <AccessError message={connectionError} retry={() => void refresh()} /> : <>
       <form className="mt-8 space-y-5" onSubmit={event => void submit(event)}>
         <div><label className="block text-sm font-semibold" htmlFor="sign-up-username">Username</label><input id="sign-up-username" className="auth-input mt-2" autoComplete="username" required minLength={3} maxLength={40} value={username} onChange={event => setUsername(event.target.value)} placeholder="Choose a username" /><p className="mt-1 text-xs text-[#999]">3–40 letters, numbers, dots, underscores, or hyphens.</p></div>

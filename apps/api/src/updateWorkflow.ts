@@ -195,22 +195,26 @@ export function ownerUpdateRoutes(db: PrismaClient) {
     res.status(202).json(jobDto(job));
   }));
 
-  router.get("/jobs", asyncRoute(async (_req, res) => {
+  router.get("/jobs", asyncRoute(async (req, res) => {
     const userId = ownerId(res);
-    await reconcileUpdateJobs(db, { requestedBy: userId });
-    const jobs = await db.updateJob.findMany({ where: { requestedBy: userId },
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    await reconcileUpdateJobs(db, { requestedBy: userId, ...(deviceId ? { deviceId } : {}) });
+    const where: Prisma.UpdateJobWhereInput = { requestedBy: userId, ...(deviceId ? { deviceId } : {}) };
+    const jobs = await db.updateJob.findMany({ where,
       orderBy: { createdAt: "desc" }, take: 10 });
     res.json({ items: jobs.map(jobDto) });
   }));
 
   router.get("/downloads", asyncRoute(async (req, res) => {
     const userId = ownerId(res);
-    await reconcileUpdateJobs(db, { requestedBy: userId });
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    await reconcileUpdateJobs(db, { requestedBy: userId, ...(deviceId ? { deviceId } : {}) });
     const page = Math.min(100000, Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1));
     const pageSize = 20;
+    const where: Prisma.UpdateJobWhereInput = { requestedBy: userId, ...(deviceId ? { deviceId } : {}) };
     const [total, jobs] = await Promise.all([
-      db.updateJob.count({ where: { requestedBy: userId } }),
-      db.updateJob.findMany({ where: { requestedBy: userId },
+      db.updateJob.count({ where }),
+      db.updateJob.findMany({ where,
         include: { application: { select: { displayName: true, publisher: true } } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
     ]);

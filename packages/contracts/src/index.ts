@@ -31,6 +31,7 @@ export const SettingsPatchSchema = z.object({ theme: ThemeSchema.optional(), sca
   .refine(value => value.theme !== undefined || value.scanReminderDays !== undefined, "At least one setting is required.");
 
 export const ApplicationQuerySchema = z.object({
+  deviceId: z.string().optional(),
   search: z.string().trim().max(120).optional(),
   installationType: z.enum(["windows_app"]).optional(),
   match: MatchStatusSchema.optional(),

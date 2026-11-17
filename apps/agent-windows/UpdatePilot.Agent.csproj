@@ -7,10 +7,18 @@
     <AssemblyName>UpdateX.Agent</AssemblyName>
     <Product>UpdateX</Product>
     <AssemblyTitle>UpdateX Windows Agent</AssemblyTitle>
-    <Description>UpdateX local Windows software inventory agent</Description>
+    <Description>UpdateX Windows software inventory agent</Description>
     <ApplicationIcon>..\..\branding\UpdateX_App_Icon.ico</ApplicationIcon>
+
+    <!-- Single-file self-contained win-x64 publish settings -->
+    <PublishSingleFile Condition="'$(RuntimeIdentifier)' != ''">true</PublishSingleFile>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="ReadWinGet.ps1" />
+    <EmbeddedResource Include="ReadWindowsApps.ps1" />
     <None Include="ReadWinGet.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="ReadWindowsApps.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

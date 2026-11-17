@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import express from "express";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
@@ -26,7 +28,14 @@ export function createApp(db: PrismaClient) {
   app.use((req, _res, next) => {
     const mutation = ["POST", "PATCH", "PUT", "DELETE"].includes(req.method);
     const agentWithoutOrigin = req.path.startsWith("/api/v1/agent/") && !req.header("Origin");
-    if (mutation && !agentWithoutOrigin && req.header("Origin") !== config.WEB_ORIGIN) {
+    const allowed = new Set([
+      config.WEB_ORIGIN,
+      "https://updatexsoftv.vercel.app",
+      "http://127.0.0.1:3000",
+      "http://localhost:3000",
+    ]);
+    const origin = req.header("Origin");
+    if (mutation && !agentWithoutOrigin && origin && !allowed.has(origin)) {
       next(new ApiFailure(403, "ORIGIN_REJECTED", "Request origin is not allowed."));
       return;
     }
@@ -72,6 +81,23 @@ export function createApp(db: PrismaClient) {
   app.post(`${base}/auth/guest`, limited("guest"), auth.guest);
   app.post(`${base}/auth/session`, limited("login"), auth.login);
   app.delete(`${base}/auth/session`, auth.requireOwner, auth.requireCsrf, auth.logout);
+  app.get(`${base}/agent/download`, (_req, res) => {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "agent-release/UpdateX.Agent.exe"),
+      path.resolve(process.cwd(), "../../agent-release/UpdateX.Agent.exe"),
+      path.resolve(__dirname, "../../../agent-release/UpdateX.Agent.exe"),
+      path.resolve(__dirname, "../../web/public/downloads/UpdateX.Agent.exe"),
+    ];
+    for (const exePath of candidatePaths) {
+      if (fs.existsSync(exePath)) {
+        res.setHeader("Content-Disposition", 'attachment; filename="UpdateX.Agent.exe"');
+        res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
+        res.sendFile(exePath);
+        return;
+      }
+    }
+    res.status(404).json({ error: "AGENT_BINARY_NOT_FOUND", message: "Windows agent binary is not available yet." });
+  });
   app.post(`${base}/agent/pairing/start`, limited("agent-pair"));
   app.use(`${base}/agent`, agentRoutes(db));
   app.use(base, auth.requireOwner, (req, res, next) => {

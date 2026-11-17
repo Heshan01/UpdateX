@@ -18,10 +18,32 @@ internal static class WinGetStructuredCatalog
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
+    private static string EnsureScript()
+    {
+        string script = Path.Combine(AppContext.BaseDirectory, "ReadWinGet.ps1");
+        if (File.Exists(script)) return script;
+        try
+        {
+            string tempScript = Path.Combine(Path.GetTempPath(), "UpdateX", "ReadWinGet.ps1");
+            if (File.Exists(tempScript)) return tempScript;
+            Directory.CreateDirectory(Path.GetDirectoryName(tempScript)!);
+            using var stream = typeof(WinGetStructuredCatalog).Assembly.GetManifestResourceStream("UpdatePilot.Agent.ReadWinGet.ps1")
+                ?? typeof(WinGetStructuredCatalog).Assembly.GetManifestResourceStream("UpdateX.Agent.ReadWinGet.ps1");
+            if (stream is not null)
+            {
+                using var file = File.Create(tempScript);
+                stream.CopyTo(file);
+                return tempScript;
+            }
+        }
+        catch { }
+        return script;
+    }
+
     public static async Task<WinGetStructuredResult> ReadAsync(CancellationToken token)
     {
         string? module = FindModule();
-        string script = Path.Combine(AppContext.BaseDirectory, "ReadWinGet.ps1");
+        string script = EnsureScript();
         string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
         if (module is null || !File.Exists(script) || !File.Exists(powershell))

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { Boxes, CircleArrowUp, Clock3, Download, Menu, Minus, ScanSearch, Settings2, Square, UserRound, X } from "lucide-react";
 import type { DashboardDto } from "@updatepilot/contracts";
 import { useAuth } from "./AuthProvider";
+import { useDevice } from "./DeviceProvider";
+import { DeviceSelector } from "./DeviceSelector";
 import { useLiveQuery } from "./useLiveQuery";
 
 const navigation = [
@@ -62,8 +64,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return <div className="desktop-shell">
     <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[80] focus:rounded focus:bg-[#ff343c] focus:px-3 focus:py-2 focus:text-white">Skip to content</a>
     <header className="desktop-titlebar">
-      <div className="desktop-brand"><span className="brand-mark"><Image src="/branding/UpdateX_App_Icon.ico" alt="" width={31} height={31} className="h-[31px] w-[31px] object-contain" unoptimized /></span><span><strong>UpdateX</strong><small>Software update intelligence</small></span></div>
+      <div className="desktop-brand">
+        <span className="brand-mark"><Image src="/branding/UpdateX_App_Icon.ico" alt="" width={31} height={31} className="h-[31px] w-[31px] object-contain" unoptimized /></span>
+        <span><strong>UpdateX</strong><small>Software update intelligence</small></span>
+      </div>
       <div className="desktop-title-actions">
+        <DeviceSelector />
         {state.mode === "guest" && <span className="rounded border border-[#555] px-2 py-0.5 text-[11px] font-semibold text-[#d1d1d1]">Guest</span>}
         <Link href="/settings" className="title-icon" aria-label="Open settings" title="Settings"><Settings2 className="h-[18px] w-[18px]" /></Link>
         <div className="relative">
@@ -89,13 +95,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function UpdateNavCount() {
-  const { data } = useLiveQuery<DashboardDto>("/dashboard");
+  const { selectedDeviceId } = useDevice();
+  const path = selectedDeviceId ? `/dashboard?deviceId=${selectedDeviceId}` : "/dashboard";
+  const { data } = useLiveQuery<DashboardDto>(path);
   return data?.updateCount ? <span className="nav-count">{data.updateCount}</span> : null;
 }
 
 function ShellStatus({ pageLabel }: { pageLabel: string }) {
-  const { data, reload } = useLiveQuery<DashboardDto>("/dashboard");
+  const { selectedDevice, selectedDeviceId } = useDevice();
+  const path = selectedDeviceId ? `/dashboard?deviceId=${selectedDeviceId}` : "/dashboard";
+  const { data, reload } = useLiveQuery<DashboardDto>(path);
   useEffect(() => { const timer = window.setInterval(reload, 10000); return () => window.clearInterval(timer); }, [reload]);
-  const agent = data?.agent;
+  const agent = selectedDevice ?? data?.agent;
   return <footer className="desktop-statusbar"><div className="flex min-w-0 items-center gap-2"><span className={`status-dot ${agent?.connection === "online" ? "online" : ""}`} /><span className="truncate">{agent?.name ?? "No agent paired"}</span><span className="text-[#aaa]">{agent?.connection ?? "unpaired"}</span></div><div className="flex items-center gap-3"><span className="hidden sm:inline">{pageLabel}</span><span>v0.1.0</span></div></footer>;
 }

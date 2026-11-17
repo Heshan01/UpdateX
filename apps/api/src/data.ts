@@ -77,9 +77,12 @@ function auditDto(event: { id: string; kind: string; action: string; detail: str
 export function dataRoutes(db: PrismaClient) {
   const router = Router();
 
-  router.get("/dashboard", asyncRoute(async (_req, res) => {
+  router.get("/dashboard", asyncRoute(async (req, res) => {
     const userId = ownerId(res);
-    const device = await db.device.findFirst({ where: { ownerId: userId, revokedAt: null }, orderBy: { createdAt: "desc" } });
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    const device = deviceId
+      ? await db.device.findFirst({ where: { id: deviceId, ownerId: userId, revokedAt: null } })
+      : await db.device.findFirst({ where: { ownerId: userId, revokedAt: null }, orderBy: { createdAt: "desc" } });
     const snapshot = device ? await db.scanSnapshot.findFirst({ where: { deviceId: device.id }, orderBy: { takenAt: "desc" } }) : null;
     const [inventoryCount, updateCount, unsupportedCount, activity, settings] = await Promise.all([
       snapshot ? db.application.count({ where: { snapshotId: snapshot.id } }) : Promise.resolve(0),
@@ -105,7 +108,10 @@ export function dataRoutes(db: PrismaClient) {
 
   router.get("/applications", asyncRoute(async (req, res) => {
     const q = ApplicationQuerySchema.parse(req.query);
-    const device = await db.device.findFirst({ where: { ownerId: ownerId(res), revokedAt: null }, orderBy: { createdAt: "desc" } });
+    const userId = ownerId(res);
+    const device = q.deviceId
+      ? await db.device.findFirst({ where: { id: q.deviceId, ownerId: userId, revokedAt: null } })
+      : await db.device.findFirst({ where: { ownerId: userId, revokedAt: null }, orderBy: { createdAt: "desc" } });
     const snapshot = device ? await db.scanSnapshot.findFirst({ where: { deviceId: device.id }, orderBy: { takenAt: "desc" } }) : null;
     if (!snapshot) {
       res.json({ items: [], page: q.page, pageSize: q.pageSize, total: 0, totalPages: 0 });
@@ -142,8 +148,12 @@ export function dataRoutes(db: PrismaClient) {
     res.json({ items: items.map(applicationDto), page: q.page, pageSize: q.pageSize, total, totalPages: Math.ceil(total / q.pageSize) });
   }));
 
-  router.get("/applications/export.csv", asyncRoute(async (_req, res) => {
-    const device = await db.device.findFirst({ where: { ownerId: ownerId(res), revokedAt: null }, orderBy: { createdAt: "desc" } });
+  router.get("/applications/export.csv", asyncRoute(async (req, res) => {
+    const userId = ownerId(res);
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    const device = deviceId
+      ? await db.device.findFirst({ where: { id: deviceId, ownerId: userId, revokedAt: null } })
+      : await db.device.findFirst({ where: { ownerId: userId, revokedAt: null }, orderBy: { createdAt: "desc" } });
     const snapshot = device ? await db.scanSnapshot.findFirst({ where: { deviceId: device.id }, orderBy: { takenAt: "desc" } }) : null;
     const apps = snapshot ? await db.application.findMany({ where: { snapshotId: snapshot.id }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }) : [];
     const rows: (string | null)[][] = [["Application", "Publisher", "Installed version", "Available version", "Update status", "Match status", "WinGet ID", "Installation scope", "Architecture", "Observed at", "Scan timestamp"]];
@@ -186,7 +196,10 @@ export function dataRoutes(db: PrismaClient) {
 
   router.get("/updates", asyncRoute(async (req, res) => {
     const q = ApplicationQuerySchema.parse({ ...req.query, update: "available" });
-    const device = await db.device.findFirst({ where: { ownerId: ownerId(res), revokedAt: null }, orderBy: { createdAt: "desc" } });
+    const userId = ownerId(res);
+    const device = q.deviceId
+      ? await db.device.findFirst({ where: { id: q.deviceId, ownerId: userId, revokedAt: null } })
+      : await db.device.findFirst({ where: { ownerId: userId, revokedAt: null }, orderBy: { createdAt: "desc" } });
     const snapshot = device ? await db.scanSnapshot.findFirst({ where: { deviceId: device.id }, orderBy: { takenAt: "desc" } }) : null;
     if (!snapshot) { res.json({ items: [], page: q.page, pageSize: q.pageSize, total: 0, totalPages: 0 }); return; }
     const where: Prisma.ApplicationWhereInput = { snapshotId: snapshot.id, updateStatus: "available", matchStatus: "verified" };
@@ -212,7 +225,8 @@ export function dataRoutes(db: PrismaClient) {
   router.get("/update-history", asyncRoute(async (req, res) => {
     const q = HistoryQuerySchema.parse(req.query);
     const userId = ownerId(res);
-    const where = { requestedBy: userId };
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    const where: Prisma.UpdateJobWhereInput = { requestedBy: userId, ...(deviceId ? { deviceId } : {}) };
     const [total, jobs] = await Promise.all([
       db.updateJob.count({ where }),
       db.updateJob.findMany({ where, include: { application: { select: { displayName: true } }, events: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
@@ -233,8 +247,11 @@ export function dataRoutes(db: PrismaClient) {
     res.json({ items, page: q.page, pageSize: q.pageSize, total, totalPages: Math.ceil(total / q.pageSize) });
   }));
 
-  router.get("/update-history/export.csv", asyncRoute(async (_req, res) => {
-    const jobs = await db.updateJob.findMany({ where: { requestedBy: ownerId(res) }, include: { application: { select: { displayName: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  router.get("/update-history/export.csv", asyncRoute(async (req, res) => {
+    const userId = ownerId(res);
+    const deviceId = typeof req.query.deviceId === "string" && req.query.deviceId ? req.query.deviceId : undefined;
+    const where: Prisma.UpdateJobWhereInput = { requestedBy: userId, ...(deviceId ? { deviceId } : {}) };
+    const jobs = await db.updateJob.findMany({ where, include: { application: { select: { displayName: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     const rows: (string | number | null)[][] = [["Application", "Publisher", "WinGet ID", "Before version", "Target version", "Verified installed version", "Update status", "Diagnostic code", "Exit code", "Requested at", "Started at", "Completed at"]];
     for (const job of jobs) rows.push([job.application.displayName, job.publisher, job.packageId, job.installedVersion, job.targetVersion, job.observedVersion, job.status, job.diagnosticCode, job.exitCode, job.createdAt.toISOString(), job.startedAt?.toISOString() ?? null, job.completedAt?.toISOString() ?? null]);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");

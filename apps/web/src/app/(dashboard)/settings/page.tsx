@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { PageIntro } from "@/components/PageParts";
 import { AgentManager } from "@/components/AgentManager";
+import { DeviceSelector } from "@/components/DeviceSelector";
 import { useLiveQuery } from "@/components/useLiveQuery";
 import { api } from "@/lib/api";
 
@@ -54,7 +55,12 @@ export default function SettingsPage() {
     finally { setSaving(false); }
   };
   return <>
-    <PageIntro eyebrow="Local preferences" title="Settings" description="Appearance, optional local account, offline license, and this computer's paired Windows agent." />
+    <PageIntro
+      eyebrow="Preferences & Devices"
+      title="Settings"
+      description="Appearance, your account, paired Windows devices, and agent downloads."
+      trailing={<DeviceSelector />}
+    />
     <div className="desktop-settings-grid">
       <section className="panel desktop-setting-section"><div className="desktop-setting-heading"><Sun className="h-4 w-4 text-[#ff8a00]" /><div><h2>Appearance</h2><p>Saved to your local owner account.</p></div></div>
         <div className="desktop-theme-options" role="group" aria-label="Theme preference">{themes.map(option => { const Icon = option.icon; return <button key={option.value} disabled={saving} onClick={() => void choose(option.value)} aria-pressed={theme === option.value} className={"desktop-theme-option" + (theme === option.value ? " selected" : "")}><Icon className="h-4 w-4" /><strong>{option.title}</strong><span>{option.note}</span></button>; })}</div>

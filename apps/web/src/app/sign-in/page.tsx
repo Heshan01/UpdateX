@@ -34,7 +34,7 @@ export default function SignInPage() {
     } finally { setSubmitting(false); }
   }
 
-  return <AccessLayout eyebrow="Local account" title="Sign In" description="Use your local UpdateX username and password. No internet connection is required.">
+  return <AccessLayout eyebrow="Sign In" title="Sign In" description="Sign in to your UpdateX account to view and manage your paired Windows devices.">
     {loading ? <p className="mt-8 text-sm text-[#b7b7b7]" role="status">Checking your local session…</p> : connectionError ? <AccessError message={connectionError} retry={() => void refresh()} /> : <>
       <form className="mt-8 space-y-5" onSubmit={event => void submit(event)}>
         <div><label className="block text-sm font-semibold" htmlFor="sign-in-username">Username</label><input id="sign-in-username" className="auth-input mt-2" autoComplete="username" required maxLength={40} value={username} onChange={event => setUsername(event.target.value)} placeholder="Your username" /></div>

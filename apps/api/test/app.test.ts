@@ -53,12 +53,12 @@ describe("local API boundaries", () => {
     const response = await request(createApp(db as unknown as PrismaClient))
       .post("/api/v1/auth/guest").set("Origin", origin).send({});
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ authenticated: true, mode: "guest", accountAvailable: false });
+    expect(response.body).toMatchObject({ authenticated: true, mode: "guest" });
     expect(response.body.csrfToken).toBeTruthy();
-    expect(db.user.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "local-owner" } }));
+    expect(db.user.create).toHaveBeenCalled();
   });
 
-  it("registers a separate local account while retaining the shared inventory owner", async () => {
+  it("registers a separate user account with isolated identity", async () => {
     const db = fakeDb();
     db.user.create.mockResolvedValue({ id: "account-two", username: "new-owner", accountEnabled: true });
     const response = await request(createApp(db as unknown as PrismaClient))
@@ -66,7 +66,9 @@ describe("local API boundaries", () => {
       .send({ username: "new-owner", password: "A-long-local-passphrase-123" });
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({ authenticated: true, mode: "account", username: "new-owner" });
-    expect(db.user.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "local-owner" } }));
+    expect(db.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ username: "new-owner", accountEnabled: true }),
+    }));
     expect(db.session.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       userId: "account-two", mode: "account",
     }) }));
@@ -74,7 +76,7 @@ describe("local API boundaries", () => {
 
   it("rejects an existing username without creating another account", async () => {
     const db = fakeDb();
-    db.user.findMany.mockResolvedValue([{ id: "local-owner", username: "Existing", accountEnabled: true }]);
+    db.user.findMany.mockResolvedValue([{ id: "account-one", username: "Existing", accountEnabled: true }]);
     const response = await request(createApp(db as unknown as PrismaClient))
       .post("/api/v1/auth/register").set("Origin", origin)
       .send({ username: "existing", password: "A-long-local-passphrase-123" });
@@ -83,7 +85,7 @@ describe("local API boundaries", () => {
     expect(db.user.create).not.toHaveBeenCalled();
   });
 
-  it("lets a signed-in additional account read the existing computer inventory", async () => {
+  it("scopes dashboard and device inventory to the authenticated user", async () => {
     const db = fakeDb();
     db.session.findUnique.mockResolvedValue({ userId: "account-two", mode: "account",
       user: { username: "new-owner" }, csrfToken: "token", expiresAt: new Date(Date.now() + 60_000) });
@@ -91,7 +93,7 @@ describe("local API boundaries", () => {
       .get("/api/v1/dashboard").set("Cookie", "up_session=opaque");
     expect(response.status).toBe(200);
     expect(db.device.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { ownerId: "local-owner", revokedAt: null },
+      where: { ownerId: "account-two", revokedAt: null },
     }));
   });
 

@@ -6,6 +6,8 @@ import { ArrowUpRight, Package2 } from "lucide-react";
 import type { ApplicationDto, DashboardDto, Page, UpdateJobDto, UpdatePreviewDto } from "@updatepilot/contracts";
 import { useAuth } from "@/components/AuthProvider";
 import { EmptyState, ErrorState, LoadingState } from "@/components/DataState";
+import { DeviceSelector } from "@/components/DeviceSelector";
+import { useDevice } from "@/components/DeviceProvider";
 import { DownloadProgress } from "@/components/DownloadProgress";
 import { PageIntro, Pagination, StatusPill } from "@/components/PageParts";
 import { useLiveQuery } from "@/components/useLiveQuery";
@@ -31,11 +33,21 @@ const jobMessage: Record<string, string> = {
 
 export function UpdateManager() {
   const { state } = useAuth();
+  const { selectedDeviceId, selectedDevice } = useDevice();
   const [page, setPage] = useState(1);
-  const { data, error, loading, reload } = useLiveQuery<Page<ApplicationDto>>("/updates?page=" + page + "&pageSize=20");
-  const { data: jobData, error: jobError, loading: jobsLoading, reload: reloadJobs } = useLiveQuery<{ items: UpdateJobDto[] }>("/jobs");
-  const { data: dashboard, reload: reloadDashboard } = useLiveQuery<DashboardDto>("/dashboard");
-  const { data: windowsApps, reload: reloadWindowsApps } = useLiveQuery<Page<ApplicationDto>>("/applications?installationType=windows_app&page=1&pageSize=5");
+  const updatesPath = selectedDeviceId
+    ? `/updates?page=${page}&pageSize=20&deviceId=${selectedDeviceId}`
+    : `/updates?page=${page}&pageSize=20`;
+  const jobsPath = selectedDeviceId ? `/jobs?deviceId=${selectedDeviceId}` : "/jobs";
+  const dashboardPath = selectedDeviceId ? `/dashboard?deviceId=${selectedDeviceId}` : "/dashboard";
+  const windowsAppsPath = selectedDeviceId
+    ? `/applications?installationType=windows_app&page=1&pageSize=5&deviceId=${selectedDeviceId}`
+    : `/applications?installationType=windows_app&page=1&pageSize=5`;
+
+  const { data, error, loading, reload } = useLiveQuery<Page<ApplicationDto>>(updatesPath);
+  const { data: jobData, error: jobError, loading: jobsLoading, reload: reloadJobs } = useLiveQuery<{ items: UpdateJobDto[] }>(jobsPath);
+  const { data: dashboard, reload: reloadDashboard } = useLiveQuery<DashboardDto>(dashboardPath);
+  const { data: windowsApps, reload: reloadWindowsApps } = useLiveQuery<Page<ApplicationDto>>(windowsAppsPath);
   const [preview, setPreview] = useState<UpdatePreviewDto | null>(null);
   const [selected, setSelected] = useState<ApplicationDto | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -132,7 +144,17 @@ export function UpdateManager() {
   function refresh() { reload(); reloadJobs(); reloadDashboard(); reloadWindowsApps(); }
 
   return <>
-    <PageIntro eyebrow="Verified opportunities" title="Available updates" description="Only trusted WinGet matches are eligible. Review the exact package and version before creating a job." trailing={<button className="button-secondary" onClick={refresh}>Refresh</button>} />
+    <PageIntro
+      eyebrow="Verified opportunities"
+      title="Available updates"
+      description={`Only trusted WinGet matches for ${selectedDevice ? selectedDevice.name : "your paired Windows device"} are eligible. Review the exact package and version before creating a job.`}
+      trailing={
+        <div className="flex flex-wrap items-center gap-2">
+          <DeviceSelector />
+          <button className="button-secondary" onClick={refresh}>Refresh</button>
+        </div>
+      }
+    />
     {actionError && <p className="desktop-update-error" role="alert">{actionError}</p>}
     {currentJob && <div className="desktop-current-job" role="status"><div><strong>Update job: {currentJob.status.replaceAll("_", " ")}</strong><p>{currentJob.packageId} · {currentJob.installedVersion ?? "Unknown"} → {currentJob.targetVersion}{currentJob.observedVersion ? " · observed " + currentJob.observedVersion : ""}{currentJob.diagnosticCode ? " · " + currentJob.diagnosticCode : ""}</p><p>{jobMessage[currentJob.status] ?? "Check the agent and job history for details."}</p>{currentJob.status === "running" && currentJob.progressStage === "downloading" && <DownloadProgress applicationName={currentJob.packageId} percent={currentJob.downloadPercent} downloadedBytes={currentJob.downloadedBytes} totalBytes={currentJob.totalBytes} />}{currentJob.events?.length ? <ol aria-label="Job events">{currentJob.events.map(event => <li key={event.id}>{formatDate(event.createdAt)} · {event.status.replaceAll("_", " ")}{event.detail ? " · " + event.detail : ""}</li>)}</ol> : null}</div><StatusPill status={currentJob.status} /></div>}
     <p className="desktop-update-notice" role="status">{scanStale ? "Saved update evidence is older than your scan preference. Run a fresh scan before reviewing or queuing an update." : !dashboard?.agent ? "No paired agent is available. Saved update opportunities are for review only." : dashboard.agent.connection !== "online" ? "Agent offline. Saved update opportunities may be stale; no update can be queued." : dashboard.agent.executionMode === "read_only" ? "Agent online in read-only mode. You may review an exact update, but no installation job can be queued." : !desktopAllowsQueue ? "The desktop-managed agent has not confirmed update-enabled mode. Check its status in Settings." : "Agent reports update-enabled mode. An exact preview and explicit confirmation are required before a job can be queued."}{dashboard?.lastScanAt ? " Last successful scan: " + formatDate(dashboard.lastScanAt) + "." : ""}</p>

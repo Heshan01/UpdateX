@@ -14,7 +14,7 @@ internal sealed class AgentClient : IDisposable
     public AgentClient(AgentIdentity identity)
     {
         this.identity = identity;
-        string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "http://127.0.0.1:4000").TrimEnd('/');
+        string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "https://updatepilotapi-production.up.railway.app").TrimEnd('/');
         client = new HttpClient { BaseAddress = new Uri($"{apiBase}/api/v1/agent/"), Timeout = TimeSpan.FromSeconds(40) };
     }
 

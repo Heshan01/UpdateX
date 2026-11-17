@@ -21,6 +21,8 @@ export function ScanCenter({ dashboard, onCompleted }: { dashboard: DashboardDto
   const online = agent?.connection === "online";
 
   useEffect(() => {
+    setScan(null);
+    setError(null);
     const id = window.sessionStorage.getItem(activeKey);
     const path = id ? "/scans/" + id : agentId ? "/devices/" + agentId + "/scans/latest" : null;
     if (!path) return;
@@ -79,7 +81,17 @@ export function ScanCenter({ dashboard, onCompleted }: { dashboard: DashboardDto
     !agent ? "Connect the local agent in Settings to scan this computer." : !online ? "Start the paired agent, then scan this computer." : "Keep your installed software up to date and secure.";
 
   return <section className="scan-stage" aria-labelledby="scan-title">
-    <div className="scan-stage-heading" aria-live="polite"><h1 id="scan-title" className={completed ? "scan-heading-complete" : ""}>{headline}</h1><p>{detail}</p></div>
+    <div className="scan-stage-heading" aria-live="polite">
+      {agent && (
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#3b3b3d] bg-[#222224] px-3.5 py-1 text-xs text-[#d1d1d1]">
+          <span className={`inline-block h-2 w-2 rounded-full ${online ? "bg-[#32d56a] shadow-[0_0_6px_#32d56a]" : "bg-[#777]"}`} />
+          <span>Device: <strong>{agent.name}</strong></span>
+          <span className="text-[#999]">({online ? "Online" : "Offline"})</span>
+        </div>
+      )}
+      <h1 id="scan-title" className={completed ? "scan-heading-complete" : ""}>{headline}</h1>
+      <p>{detail}</p>
+    </div>
     <div className={"scan-orbit" + (busy ? " is-scanning" : "") + (completed ? " is-complete" : "")}>
       <div className="scan-orbit-mid"><div className="scan-orbit-inner">
         {completed ? <Link href={dashboard.updateCount ? "/updates" : "/applications"} className="scan-action" aria-label={dashboard.updateCount ? "Review available updates" : "View scanned applications"}><Check className="scan-action-icon" aria-hidden="true" /><span className="scan-action-label scan-action-label-small">{dashboard.updateCount ? "REVIEW" : "VIEW"}</span><small>{dashboard.updateCount ? "UPDATES" : "APPLICATIONS"}</small></Link> :

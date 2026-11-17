@@ -10,8 +10,8 @@ const COOKIE = "up_session";
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const cookieOptions: CookieOptions = {
   httpOnly: true,
-  sameSite: "strict",
-  secure: config.SESSION_COOKIE_SECURE === "true",
+  sameSite: "lax",
+  secure: config.SESSION_COOKIE_SECURE === "true" || process.env.NODE_ENV === "production",
   path: "/",
   maxAge: SESSION_MS,
 };
@@ -48,14 +48,10 @@ async function createSession(db: PrismaClient, res: Response, userId: string, us
 }
 
 export function authRoutes(db: PrismaClient) {
-  const accountAvailable = () => db.user.count({ where: { accountEnabled: true } }).then(count => count > 0);
-  const ensureLocalOwner = async () => db.user.upsert({ where: { id: "local-owner" }, update: {}, create: {
-    id: "local-owner", username: "__updatex_guest__",
-    passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString("base64url"), 12),
-    accountEnabled: false, settings: { create: { theme: "system", retentionDays: 365 } },
-  } });
+  const accountAvailable = () => Promise.resolve(true);
+
   const state: RequestHandler = asyncRoute(async (req, res) => {
-    const available = await accountAvailable();
+    const available = true;
     const token = req.cookies?.[COOKIE] as string | undefined;
     if (!token) { res.json({ initialized: available, accountAvailable: available, authenticated: false }); return; }
     const session = await db.session.findUnique({ where: { tokenHash: tokenHash(token) }, include: { user: true } });
@@ -66,30 +62,42 @@ export function authRoutes(db: PrismaClient) {
   });
 
   const guest: RequestHandler = asyncRoute(async (_req, res) => {
-    // All guests and the optional local account share one data owner. This keeps
-    // existing devices, snapshots, jobs and history when the user creates an account.
-    const user = await ensureLocalOwner();
-    res.json(await createSession(db, res, user.id, user.username, "guest", await accountAvailable()));
+    // Each guest has their own isolated user identity and settings
+    const guestUser = await db.user.create({
+      data: {
+        username: `guest_${crypto.randomBytes(6).toString("hex")}`,
+        passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString("base64url"), 10),
+        accountEnabled: false,
+        settings: { create: { theme: "system", retentionDays: 365 } },
+      },
+    });
+    res.json(await createSession(db, res, guestUser.id, "Guest", "guest", true));
   });
 
   const register: RequestHandler = asyncRoute(async (req, res) => {
     const credentials = CredentialsSchema.parse(req.body);
-    const owner = await ensureLocalOwner();
     const passwordHash = await bcrypt.hash(credentials.password, 12);
     try {
       const user = await db.$transaction(async tx => {
         if (await findAccountByUsername(tx, credentials.username))
-          throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use on this computer.");
-        const created = await tx.user.create({ data: {
-          username: credentials.username, passwordHash, accountEnabled: true,
-        } });
-        await tx.auditEvent.create({ data: { userId: owner.id, action: "owner.created", detail: "Local account created" } });
+          throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use.");
+        const created = await tx.user.create({
+          data: {
+            username: credentials.username,
+            passwordHash,
+            accountEnabled: true,
+            settings: { create: { theme: "system", retentionDays: 365 } },
+          },
+        });
+        await tx.auditEvent.create({
+          data: { userId: created.id, action: "owner.created", detail: "Account created" },
+        });
         return created;
       }, { isolationLevel: "Serializable" });
       res.status(201).json(await createSession(db, res, user.id, user.username, "account", true));
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002")
-        throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use on this computer.");
+        throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use.");
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2034")
         throw new ApiFailure(409, "REGISTRATION_CONFLICT", "Another account changed. Try again.");
       throw error;
@@ -97,33 +105,30 @@ export function authRoutes(db: PrismaClient) {
   });
 
   const bootstrap: RequestHandler = asyncRoute(async (req, res) => {
+    // Multi-user registration
     const credentials = CredentialsSchema.parse(req.body);
     const passwordHash = await bcrypt.hash(credentials.password, 12);
     try {
       const user = await db.$transaction(async tx => {
-        const sameName = await findAccountByUsername(tx, credentials.username);
-        if (await tx.user.count({ where: { accountEnabled: true } }) ||
-            (sameName && sameName.id !== "local-owner"))
-          throw new ApiFailure(409, "ALREADY_INITIALIZED", "A local account already exists.");
-        const existing = await tx.user.findUnique({ where: { id: "local-owner" } });
-        if (existing?.accountEnabled) throw new ApiFailure(409, "ALREADY_INITIALIZED", "The local account already exists.");
-        if (existing) {
-          const changed = await tx.user.updateMany({ where: { id: existing.id, accountEnabled: false }, data: {
-            username: credentials.username, passwordHash, accountEnabled: true,
-          } });
-          if (changed.count !== 1) throw new ApiFailure(409, "ALREADY_INITIALIZED", "The local account already exists.");
-        }
-        const created = existing ? await tx.user.findUniqueOrThrow({ where: { id: existing.id } }) : await tx.user.create({ data: {
-          id: "local-owner", username: credentials.username, passwordHash, accountEnabled: true,
-          settings: { create: { theme: "system", retentionDays: 365 } },
-        } });
-        await tx.auditEvent.create({ data: { userId: created.id, action: "owner.created", detail: "Local owner account created" } });
+        if (await findAccountByUsername(tx, credentials.username))
+          throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use.");
+        const created = await tx.user.create({
+          data: {
+            username: credentials.username,
+            passwordHash,
+            accountEnabled: true,
+            settings: { create: { theme: "system", retentionDays: 365 } },
+          },
+        });
+        await tx.auditEvent.create({
+          data: { userId: created.id, action: "owner.created", detail: "Account created" },
+        });
         return created;
       }, { isolationLevel: "Serializable" });
       res.status(201).json(await createSession(db, res, user.id, user.username, "account", true));
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
-        throw new ApiFailure(409, "ALREADY_INITIALIZED", "The owner account already exists.");
+        throw new ApiFailure(409, "USERNAME_TAKEN", "That username is already in use.");
       }
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2034")
         throw new ApiFailure(409, "REGISTRATION_CONFLICT", "Another account changed. Try again.");
@@ -137,7 +142,7 @@ export function authRoutes(db: PrismaClient) {
     if (!user?.accountEnabled || !(await bcrypt.compare(credentials.password, user.passwordHash))) {
       throw new ApiFailure(401, "INVALID_CREDENTIALS", "Username or password is incorrect.");
     }
-    await db.auditEvent.create({ data: { userId: "local-owner", action: "owner.signed_in", detail: "Local account signed in" } });
+    await db.auditEvent.create({ data: { userId: user.id, action: "owner.signed_in", detail: "Signed in" } });
     res.json(await createSession(db, res, user.id, user.username, "account", true));
   });
 
@@ -146,9 +151,8 @@ export function authRoutes(db: PrismaClient) {
     if (!token) throw new ApiFailure(401, "UNAUTHENTICATED", "Choose Guest or sign in to continue.");
     const session = await db.session.findUnique({ where: { tokenHash: tokenHash(token) }, include: { user: true } });
     if (!session || session.expiresAt <= new Date()) throw new ApiFailure(401, "SESSION_EXPIRED", "Your session expired. Sign in again.");
-    // Every mode accesses the same licensed computer's inventory and history.
-    // The authenticated account identity stays in Session for sign-in and sign-out.
-    res.locals.ownerId = "local-owner";
+    // Isolated per-user scoping
+    res.locals.ownerId = session.userId;
     res.locals.username = session.mode === "guest" ? "Guest" : session.user.username;
     res.locals.accessMode = session.mode === "guest" ? "guest" : "account";
     res.locals.csrfToken = session.csrfToken;

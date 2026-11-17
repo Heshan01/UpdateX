@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Package2 } from "lucide-react";
 import type { DownloadDto, Page, UpdateHistoryDto } from "@updatepilot/contracts";
 import { EmptyState, ErrorState, LoadingState } from "@/components/DataState";
+import { DeviceSelector } from "@/components/DeviceSelector";
+import { useDevice } from "@/components/DeviceProvider";
 import { DownloadProgress } from "@/components/DownloadProgress";
 import { PageIntro, Pagination, StatusPill } from "@/components/PageParts";
 import { useLiveQuery } from "@/components/useLiveQuery";
@@ -21,11 +23,12 @@ const stageLabel: Record<string, string> = {
 };
 
 export default function DownloadsPage() {
+  const { selectedDeviceId, selectedDevice } = useDevice();
   const [page, setPage] = useState(1);
-  // Update history is the established route in older local API builds. Its
-  // events are persisted job evidence, so this view remains useful while a
-  // separately installed API has not yet gained the newer /downloads route.
-  const { data, error, loading, reload } = useLiveQuery<Page<UpdateHistoryDto>>(`/update-history?page=${page}`);
+  const downloadPath = selectedDeviceId
+    ? `/update-history?page=${page}&deviceId=${selectedDeviceId}`
+    : `/update-history?page=${page}`;
+  const { data, error, loading, reload } = useLiveQuery<Page<UpdateHistoryDto>>(downloadPath);
   const items: DownloadDto[] = data?.items.map(job => {
     const last = job.events.at(-1);
     const progressStage = job.progressStage ?? (job.status === "running" &&
@@ -41,7 +44,17 @@ export default function DownloadsPage() {
     return () => window.clearInterval(timer);
   }, [data, reload]);
   return <>
-    <PageIntro eyebrow="Update jobs" title="Downloads" description="Real WinGet jobs and recorded progress. An update is complete only after its installed version is verified." trailing={<button className="button-secondary" onClick={reload}>Refresh</button>} />
+    <PageIntro
+      eyebrow="Update jobs"
+      title="Downloads"
+      description={`Real WinGet jobs and recorded progress for ${selectedDevice ? selectedDevice.name : "your paired Windows devices"}. An update is complete only after its installed version is verified.`}
+      trailing={
+        <div className="flex flex-wrap items-center gap-2">
+          <DeviceSelector />
+          <button className="button-secondary" onClick={reload}>Refresh</button>
+        </div>
+      }
+    />
     {loading && !data ? <LoadingState /> : error ? <ErrorState message={error} retry={reload} /> : data && data.items.length > 0 ? <div className="panel overflow-hidden"><ol>
       {items.map(job => <li key={job.id} className="border-b border-[#3d3d3d] p-4 last:border-0">
         <div className="flex items-start gap-3"><span className="desktop-app-icon"><Package2 className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div><strong>{job.applicationName}</strong><p className="text-xs text-[#aaa]">{job.packageId} · {job.source} · {job.publisher ?? "Publisher unavailable"}</p></div><StatusPill status={job.status} /></div>

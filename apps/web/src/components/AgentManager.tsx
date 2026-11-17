@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MonitorCheck, RefreshCw, ScanSearch, ShieldCheck, Unplug } from "lucide-react";
+import { Download, MonitorCheck, RefreshCw, ScanSearch, ShieldCheck, Unplug } from "lucide-react";
 import type { DeviceDto, PairingLookupDto, ScanJobDto } from "@updatepilot/contracts";
 import { useAuth } from "@/components/AuthProvider";
 import { ErrorState, LoadingState } from "@/components/DataState";
@@ -139,8 +139,52 @@ export function AgentManager() {
 
   return <section className="panel mt-6 overflow-hidden" aria-labelledby="agent-heading">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5 dark:border-[#3b3b3d]">
-      <div><h3 id="agent-heading" className="text-lg font-semibold">Windows agent</h3><p className="mt-1 text-sm text-slate-500">Pair a local agent, run real scans, and review its connection state.</p></div>
+      <div><h3 id="agent-heading" className="text-lg font-semibold">Windows devices & agent</h3><p className="mt-1 text-sm text-slate-500">Download the agent for Windows, pair your laptops, and review connection states.</p></div>
       <button className="button-secondary flex items-center gap-2" onClick={reload}><RefreshCw className="h-4 w-4" /> Refresh</button>
+    </div>
+
+    {/* Zero-Config Windows Agent Download Box */}
+    <div className="border-b border-slate-100 dark:border-[#3b3b3d] bg-gradient-to-r from-[#201819] to-[#1c1c1e] p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3.5">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-[#e03938]/15 text-[#ff7771]">
+            <Download className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-base font-semibold text-white">UpdateX Windows Agent</h4>
+              <span className="rounded bg-[#ff343c]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#ff7771]">
+                Single-file · win-x64
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[#bbb] max-w-xl">
+              Zero-config self-contained executable. Download and double-click to run on any Windows laptop (no installation or terminal needed). Then enter the pairing code below to pair this device.
+            </p>
+          </div>
+        </div>
+        <a
+          href="/downloads/UpdateX.Agent.exe"
+          download="UpdateX.Agent.exe"
+          className="flex items-center justify-center gap-2 rounded-xl bg-[#ff343c] px-5 py-3 font-semibold text-white shadow-lg transition hover:bg-[#e02b33] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ff8a00] flex-shrink-0"
+        >
+          <Download className="h-4 w-4" />
+          <span>Download Windows Agent</span>
+        </a>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-2 text-xs text-[#999] sm:grid-cols-3 border-t border-[#333336] pt-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#333] text-[10px] font-bold text-white">1</span>
+          <span>Download UpdateX.Agent.exe</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#333] text-[10px] font-bold text-white">2</span>
+          <span>Double-click to start</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#333] text-[10px] font-bold text-white">3</span>
+          <span>Enter code below & pair</span>
+        </div>
+      </div>
     </div>
     {actionError && <p className="mx-6 mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-900/20 dark:text-rose-300" role="alert">{actionError}</p>}
     {desktopAgent?.pairing && <div className="mx-6 mt-5 rounded border border-[#ff8a00] p-4 text-sm" role="status"><strong>Desktop agent is waiting for approval</strong><p className="mt-2">Pairing code: <code className="font-mono font-semibold">{desktopAgent.pairing.code}</code></p><p className="mt-2 break-all">Agent fingerprint: <code className="font-mono">{desktopAgent.pairing.fingerprint}</code></p><p className="mt-2 text-xs text-[#aaa]">Review this code below, compare the API fingerprint with this agent fingerprint, then explicitly approve. Expires {formatDate(desktopAgent.pairing.expiresAt)}.</p></div>}

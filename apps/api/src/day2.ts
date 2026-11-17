@@ -201,7 +201,6 @@ export function agentRoutes(db: PrismaClient) {
   const router = Router();
   router.post("/pairing/start", asyncRoute(async (req, res) => {
     const input = PairingStartSchema.parse(req.body);
-    if (await db.user.count() === 0) throw new ApiFailure(409, "OWNER_REQUIRED", "Create the local owner account first.");
     const fingerprint = keyFingerprint(input.publicKeyPem);
     if (await db.device.findUnique({ where: { keyFingerprint: fingerprint } })) {
       throw new ApiFailure(409, "AGENT_KEY_EXISTS", "This key was paired before; use the existing identity or create a new key.");

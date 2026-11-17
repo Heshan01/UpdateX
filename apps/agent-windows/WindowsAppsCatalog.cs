@@ -8,9 +8,31 @@ internal sealed record WindowsAppPackage(string Name, string PackageFamilyName, 
 
 internal static class WindowsAppsCatalog
 {
-    public static async Task<IReadOnlyList<WindowsAppPackage>> ReadAsync(CancellationToken token)
+    private static string EnsureScript()
     {
         string script = Path.Combine(AppContext.BaseDirectory, "ReadWindowsApps.ps1");
+        if (File.Exists(script)) return script;
+        try
+        {
+            string tempScript = Path.Combine(Path.GetTempPath(), "UpdateX", "ReadWindowsApps.ps1");
+            if (File.Exists(tempScript)) return tempScript;
+            Directory.CreateDirectory(Path.GetDirectoryName(tempScript)!);
+            using var stream = typeof(WindowsAppsCatalog).Assembly.GetManifestResourceStream("UpdatePilot.Agent.ReadWindowsApps.ps1")
+                ?? typeof(WindowsAppsCatalog).Assembly.GetManifestResourceStream("UpdateX.Agent.ReadWindowsApps.ps1");
+            if (stream is not null)
+            {
+                using var file = File.Create(tempScript);
+                stream.CopyTo(file);
+                return tempScript;
+            }
+        }
+        catch { }
+        return script;
+    }
+
+    public static async Task<IReadOnlyList<WindowsAppPackage>> ReadAsync(CancellationToken token)
+    {
+        string script = EnsureScript();
         string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
             "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
         if (!File.Exists(script) || !File.Exists(powershell))

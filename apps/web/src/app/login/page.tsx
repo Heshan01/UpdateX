@@ -28,7 +28,7 @@ export default function WelcomePage() {
     } finally { setEnteringGuest(false); }
   }
 
-  return <AccessLayout eyebrow="Licensed local access" title="Welcome to UpdateX" description="Choose how you want to use this computer. Guest has full access and never asks for an account.">
+  return <AccessLayout eyebrow="Multi-device software intelligence" title="Welcome to UpdateX" description="Sign in or create an account to manage software updates across your Windows devices.">
     {loading ? <p className="mt-8 text-sm text-[#b7b7b7]" role="status">Checking your local session…</p> : connectionError ? <><AccessError message={connectionError} retry={() => void refresh()} />{errorCode === "LICENSE_REQUIRED" && <Link href="/activate" className="mt-4 inline-block rounded-md bg-[#ff343c] px-4 py-3 font-semibold text-white">Enter license key</Link>}</> : <>
       <div className="mt-8 grid gap-3">
         <Link href="/sign-in" className="flex items-center justify-between rounded-md border border-[#555] bg-[#303030] px-4 py-4 font-semibold text-white transition hover:border-[#ff343c] hover:bg-[#383838] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8a00]"><span className="flex items-center gap-3"><UserRound className="h-5 w-5 text-[#ff343c]" /> Sign In</span><ArrowRight className="h-4 w-4" /></Link>
