@@ -8,10 +8,15 @@ namespace UpdatePilot.Agent;
 internal sealed class AgentClient : IDisposable
 {
     private readonly AgentIdentity identity;
-    private readonly HttpClient client = new() { BaseAddress = new Uri("http://127.0.0.1:4000/api/v1/agent/"), Timeout = TimeSpan.FromSeconds(40) };
+    private readonly HttpClient client;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public AgentClient(AgentIdentity identity) => this.identity = identity;
+    public AgentClient(AgentIdentity identity)
+    {
+        this.identity = identity;
+        string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "http://127.0.0.1:4000").TrimEnd('/');
+        client = new HttpClient { BaseAddress = new Uri($"{apiBase}/api/v1/agent/"), Timeout = TimeSpan.FromSeconds(40) };
+    }
 
     public async Task<PairingStartResponse> StartPairingAsync(CancellationToken token)
     {

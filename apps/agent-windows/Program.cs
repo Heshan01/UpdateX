@@ -6,6 +6,8 @@ if (!OperatingSystem.IsWindows())
     return 2;
 }
 
+string apiBase = (Environment.GetEnvironmentVariable("UPDATEX_API_BASE") ?? "http://127.0.0.1:4000").TrimEnd('/');
+
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; shutdown.Cancel(); };
 
@@ -15,7 +17,7 @@ try
     using var readiness = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
     try
     {
-        using var response = await readiness.GetAsync("http://127.0.0.1:4000/api/v1/ready", shutdown.Token);
+        using var response = await readiness.GetAsync($"{apiBase}/api/v1/ready", shutdown.Token);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Offline license is not active.");
         using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStreamAsync(shutdown.Token));
         if (!document.RootElement.TryGetProperty("license", out var value) || value.GetString() != "offline_key_verified_v1")
