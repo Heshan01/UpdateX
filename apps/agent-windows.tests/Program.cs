@@ -285,6 +285,81 @@ var tests = new (string Name, Action Test)[]
         Check(File.Exists(wingetDest) && new FileInfo(wingetDest).Length > 0, "ReadWinGet.ps1 extracted cleanly");
         Check(File.Exists(appxDest) && new FileInfo(appxDest).Length > 0, "ReadWindowsApps.ps1 extracted cleanly");
     }),
+    ("winget CLI tabular parser parses list output accurately with offsets and spinners", () =>
+    {
+        string rawList = @"
+\   |   /   -
+Name                                                               Id                                 Version        Available      Source
+------------------------------------------------------------------------------------------------------------------------------------------
+Antigravity 2.0.11                                                 Google.Antigravity                 2.0.11         2.32.2         winget
+App Installer                                                      Microsoft.AppInstaller             1.29.380.0                    winget
+3D Viewer                                                          MSIX\Microsoft.3DViewer            7.2602.8012.0                
+Some Non-Winget Tool                                               ARP\Machine\X64\Tool               1.0.0          
+Docker Desktop                                                     Docker.DockerDesktop               4.75.0         4.99.0         winget
+22 upgrades available.
+";
+        var packages = WinGetStructuredCatalog.ParseWinGetTable(rawList);
+        Check(packages.Count == 3, $"expected 3 winget packages, got {packages.Count}");
+
+        var antigravity = packages.Single(p => p.PackageId == "Google.Antigravity");
+        Check(antigravity.DisplayName == "Antigravity 2.0.11", "DisplayName preserves internal spaces");
+        Check(antigravity.InstalledVersion == "2.0.11", "InstalledVersion extracted");
+        Check(antigravity.TargetVersion == "2.32.2", "TargetVersion extracted");
+        Check(antigravity.IsUpdateAvailable == true, "IsUpdateAvailable true when available is present");
+
+        var appInstaller = packages.Single(p => p.PackageId == "Microsoft.AppInstaller");
+        Check(appInstaller.DisplayName == "App Installer", "App Installer display name");
+        Check(appInstaller.InstalledVersion == "1.29.380.0", "App Installer installed version");
+        Check(appInstaller.TargetVersion is null, "TargetVersion null when available is blank");
+        Check(appInstaller.IsUpdateAvailable == false, "IsUpdateAvailable false when available is blank");
+
+        var docker = packages.Single(p => p.PackageId == "Docker.DockerDesktop");
+        Check(docker.InstalledVersion == "4.75.0" && docker.TargetVersion == "4.99.0" && docker.IsUpdateAvailable, "Docker update parsed");
+    }),
+    ("winget CLI tabular parser merges list and upgrade outputs properly", () =>
+    {
+        string listOutput = @"
+Name                                                               Id                                 Version        Available      Source
+------------------------------------------------------------------------------------------------------------------------------------------
+Git                                                                Git.Git                            2.56.0.3                      winget
+VLC media player                                                   VideoLAN.VLC                       3.0.23                        winget
+Mozilla Firefox                                                    Mozilla.Firefox                    135.0                         winget
+";
+        string upgradeOutput = @"
+Name                                                               Id                                 Version        Available      Source
+------------------------------------------------------------------------------------------------------------------------------------------
+Git                                                                Git.Git                            2.56.0.3       2.56.0.4       winget
+VLC media player                                                   VideoLAN.VLC                       3.0.23         3.0.24         winget
+OBS Studio                                                         OBSProject.OBSStudio               32.1.2         33.0.0         winget
+2 upgrades available.
+";
+        var merged = WinGetStructuredCatalog.ParseWinGetCliOutput(listOutput, upgradeOutput);
+        Check(merged.Count == 4, $"expected 4 packages total, got {merged.Count}");
+
+        var git = merged.Single(p => p.PackageId == "Git.Git");
+        Check(git.IsUpdateAvailable && git.TargetVersion == "2.56.0.4", "Git merged with upgrade target version");
+
+        var vlc = merged.Single(p => p.PackageId == "VideoLAN.VLC");
+        Check(vlc.IsUpdateAvailable && vlc.TargetVersion == "3.0.24", "VLC merged with upgrade target version");
+
+        var firefox = merged.Single(p => p.PackageId == "Mozilla.Firefox");
+        Check(!firefox.IsUpdateAvailable && firefox.TargetVersion is null, "Firefox remains non-updateable");
+
+        var obs = merged.Single(p => p.PackageId == "OBSProject.OBSStudio");
+        Check(obs.IsUpdateAvailable && obs.InstalledVersion == "32.1.2" && obs.TargetVersion == "33.0.0", "OBS Studio discovered from upgrade output");
+    }),
+    ("winget column offsets handles varying column headers", () =>
+    {
+        string header = "Name                 Id              Version     Available";
+        string sep =    "-------------------  --------------  ----------  ---------";
+        var offsets = WinGetStructuredCatalog.DetectColumns(header, sep);
+        Check(offsets is not null && offsets.IsValid, "valid 4-column table detected");
+        Check(offsets!.NameStart == 0, "name starts at 0");
+        Check(offsets.IdStart == 21, "id starts at 21");
+        Check(offsets.VersionStart == 37, "version starts at 37");
+        Check(offsets.AvailableStart == 49, "available starts at 49");
+        Check(offsets.SourceStart == -1, "source start is -1 when absent");
+    }),
 };
 
 int passed = 0;
